@@ -1,0 +1,13 @@
+{
+    "autodeskProduct": "Fusion360",
+    "type": "addin",
+    "id": "a7c3e91f-4b2d-4e8a-9f1c-360cadassistant01",
+    "author": "CAD Assistant",
+    "description": {
+        "": "Parametric geometry assistant for Fusion 360. Creates editable native sketches and features from design intent."
+    },
+    "version": "0.17.13",
+    "runOnStartup": true,
+    "supportedOS": "windows|mac",
+    "editEnabled": true
+}
