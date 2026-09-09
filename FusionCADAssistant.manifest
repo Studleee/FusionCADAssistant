@@ -6,7 +6,7 @@
     "description": {
         "": "Parametric geometry assistant for Fusion 360. Creates editable native sketches and features from design intent."
     },
-    "version": "0.17.13",
+    "version": "0.19.0",
     "runOnStartup": true,
     "supportedOS": "windows|mac",
     "editEnabled": true

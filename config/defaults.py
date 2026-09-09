@@ -55,6 +55,7 @@ SCREW_SIZE_PRESETS = (
 SCREW_HEAD_NONE = 'None'
 SCREW_HEAD_HEX = 'Hex'
 SCREW_HEAD_FLAT = 'Flathead'
+SCREW_HEAD_TRI_SLOT = 'Tri-Slot'
 SCREW_DEFAULT_HEAD_STYLE = SCREW_HEAD_FLAT
 
 SCREW_SHAPE_SQUARED = 'Squared'
@@ -68,6 +69,7 @@ SCREW_LENGTH_MM = 2.5
 SCREW_THREAD_LENGTH_MM = 2.0
 SCREW_FULL_THREAD = True
 SCREW_MODELED = False  # cosmetic thread by default (faster; better at tiny sizes)
+SCREW_REVERSING = False  # left-hand thread + triple drive slots
 SCREW_THREAD_TYPE = 'ISO Metric profile'
 SCREW_THREAD_CLASS_EXTERNAL = '6g'
 
@@ -77,6 +79,10 @@ SCREW_SLOT_WIDTH_FRACTION = 0.14   # of head width
 SCREW_SLOT_DEPTH_FRACTION = 0.55   # of head length
 SCREW_SLOT_MIN_WIDTH_MM = 0.12
 SCREW_SLOT_MIN_DEPTH_MM = 0.10
+SCREW_REVERSING_SLOT_COUNT = 3
+# Tri-Slot head: radial kerfs stop short of center (solid hub).
+SCREW_TRI_SLOT_COUNT = 3
+SCREW_TRI_SLOT_HUB_FRACTION = 0.30  # of head radius
 
 SCREW_COMPONENT_NAME = 'Screw'
 SCREW_SHANK_SKETCH_NAME = 'ScrewShankSketch'
@@ -120,6 +126,8 @@ def screw_head_dims_mm(preset, head_style):
         return 2.2, 0.5
     _des, _maj, _pitch, hex_af, hex_h, flat_dk, flat_k, _stem_len = preset
     if head_style == SCREW_HEAD_FLAT:
+        return flat_dk, flat_k
+    if head_style == SCREW_HEAD_TRI_SLOT:
         return flat_dk, flat_k
     if head_style == SCREW_HEAD_HEX:
         return hex_af, hex_h
@@ -408,6 +416,111 @@ PARAM_PINION_FACE_WIDTH = 'pinionFaceWidth'
 PARAM_PINION_BORE_DIAMETER = 'pinionBoreDiameter'
 PARAM_PINION_PRESSURE_ANGLE = 'pinionPressureAngle'
 PARAM_PINION_MODULE = 'pinionModule'
+
+CMD_CREATE_WATCH_CASE_ID = 'CADAssistant_CreateWatchCase'
+CMD_CREATE_WATCH_CASE_NAME = 'Create Watch Case'
+CMD_CREATE_WATCH_CASE_TOOLTIP = (
+    'Create a round watch case from an adjustable revolved profile, '
+    'with optional strap lugs. Sliders control diameter, height, bezel, '
+    'crystal, cavity, caseback, and lug size.'
+)
+
+# --- CREATE WATCH CASE defaults (user-facing mm) ---------------------------
+
+WATCH_CASE_DIAMETER_MM = 40.0
+WATCH_CASE_HEIGHT_MM = 11.0
+WATCH_CASE_CRYSTAL_DIAMETER_MM = 34.0
+WATCH_CASE_CAVITY_DIAMETER_MM = 36.0
+WATCH_CASE_BEZEL_HEIGHT_MM = 2.2
+WATCH_CASE_BEZEL_INSET_MM = 0.8
+WATCH_CASE_CASEBACK_HEIGHT_MM = 2.0
+WATCH_CASE_CASEBACK_INSET_MM = 1.2
+WATCH_CASE_CASEBACK_OPENING_MM = 32.0
+WATCH_CASE_EDGE_SOFTNESS = 0.35  # 0 = sharp, 1 = soft outer corners
+WATCH_CASE_ADD_LUGS = True
+WATCH_CASE_LUG_LENGTH_MM = 4.5
+WATCH_CASE_LUG_WIDTH_MM = 3.0
+WATCH_CASE_LUG_GAP_MM = 20.0
+WATCH_CASE_LUG_THICKNESS_MM = 3.5
+WATCH_CASE_SKETCH_ONLY = False
+
+WATCH_CASE_DIAMETER_MIN_MM = 20.0
+WATCH_CASE_DIAMETER_MAX_MM = 55.0
+WATCH_CASE_HEIGHT_MIN_MM = 5.0
+WATCH_CASE_HEIGHT_MAX_MM = 18.0
+WATCH_CASE_SOFTNESS_MIN = 0.0
+WATCH_CASE_SOFTNESS_MAX = 1.0
+
+WATCH_CASE_COMPONENT_NAME = 'WatchCase'
+WATCH_CASE_PROFILE_SKETCH_NAME = 'WatchCaseProfileSketch'
+WATCH_CASE_LUG_SKETCH_NAME = 'WatchCaseLugSketch'
+WATCH_CASE_BODY_NAME = 'WatchCaseBody'
+WATCH_CASE_REVOLVE_NAME = 'WatchCaseRevolve'
+WATCH_CASE_LUG_EXTRUDE_NAME = 'WatchCaseLugs'
+
+PARAM_WATCH_CASE_DIAMETER = 'watchCaseDiameter'
+PARAM_WATCH_CASE_HEIGHT = 'watchCaseHeight'
+PARAM_WATCH_CASE_CRYSTAL_DIAMETER = 'watchCaseCrystalDiameter'
+PARAM_WATCH_CASE_CAVITY_DIAMETER = 'watchCaseCavityDiameter'
+PARAM_WATCH_CASE_BEZEL_HEIGHT = 'watchCaseBezelHeight'
+PARAM_WATCH_CASE_BEZEL_INSET = 'watchCaseBezelInset'
+PARAM_WATCH_CASE_CASEBACK_HEIGHT = 'watchCaseCasebackHeight'
+PARAM_WATCH_CASE_CASEBACK_INSET = 'watchCaseCasebackInset'
+PARAM_WATCH_CASE_CASEBACK_OPENING = 'watchCaseCasebackOpening'
+PARAM_WATCH_CASE_EDGE_SOFTNESS = 'watchCaseEdgeSoftness'
+PARAM_WATCH_CASE_LUG_LENGTH = 'watchCaseLugLength'
+PARAM_WATCH_CASE_LUG_WIDTH = 'watchCaseLugWidth'
+PARAM_WATCH_CASE_LUG_GAP = 'watchCaseLugGap'
+PARAM_WATCH_CASE_LUG_THICKNESS = 'watchCaseLugThickness'
+
+CMD_CREATE_DIAL_ID = 'CADAssistant_CreateDial'
+CMD_CREATE_DIAL_NAME = 'Create Dial'
+CMD_CREATE_DIAL_TOOLTIP = (
+    'Create a round watch dial with adjustable diameter, thickness, center '
+    'hole, optional chapter ring, and hour indices.'
+)
+
+# --- CREATE DIAL defaults (user-facing mm) ---------------------------------
+
+DIAL_DIAMETER_MM = 28.5
+DIAL_THICKNESS_MM = 0.40
+DIAL_CENTER_HOLE_MM = 1.20
+DIAL_CHAPTER_RING = True
+DIAL_CHAPTER_WIDTH_MM = 1.60
+DIAL_CHAPTER_HEIGHT_MM = 0.15
+DIAL_HOUR_INDICES = True
+DIAL_INDEX_LENGTH_MM = 2.20
+DIAL_INDEX_WIDTH_MM = 0.55
+DIAL_INDEX_HEIGHT_MM = 0.20
+DIAL_INDEX_INSET_MM = 0.80  # from outer edge to tip of index
+DIAL_MINUTE_TRACK = True
+DIAL_SKETCH_ONLY = False
+
+DIAL_DIAMETER_MIN_MM = 12.0
+DIAL_DIAMETER_MAX_MM = 45.0
+DIAL_THICKNESS_MIN_MM = 0.15
+DIAL_THICKNESS_MAX_MM = 1.50
+
+DIAL_COMPONENT_NAME = 'Dial'
+DIAL_BLANK_SKETCH_NAME = 'DialBlankSketch'
+DIAL_CHAPTER_SKETCH_NAME = 'DialChapterSketch'
+DIAL_INDEX_SKETCH_NAME = 'DialIndexSketch'
+DIAL_TRACK_SKETCH_NAME = 'DialMinuteTrackSketch'
+DIAL_BODY_NAME = 'DialBody'
+DIAL_BLANK_EXTRUDE_NAME = 'DialBlank'
+DIAL_HOLE_CUT_NAME = 'DialCenterHole'
+DIAL_CHAPTER_EXTRUDE_NAME = 'DialChapterRing'
+DIAL_INDEX_EXTRUDE_NAME = 'DialHourIndices'
+
+PARAM_DIAL_DIAMETER = 'dialDiameter'
+PARAM_DIAL_THICKNESS = 'dialThickness'
+PARAM_DIAL_CENTER_HOLE = 'dialCenterHole'
+PARAM_DIAL_CHAPTER_WIDTH = 'dialChapterWidth'
+PARAM_DIAL_CHAPTER_HEIGHT = 'dialChapterHeight'
+PARAM_DIAL_INDEX_LENGTH = 'dialIndexLength'
+PARAM_DIAL_INDEX_WIDTH = 'dialIndexWidth'
+PARAM_DIAL_INDEX_HEIGHT = 'dialIndexHeight'
+PARAM_DIAL_INDEX_INSET = 'dialIndexInset'
 
 CMD_FINISH_GUIDES_ID = 'CADAssistant_FinishGuides'
 CMD_FINISH_GUIDES_NAME = 'Finish Guides'

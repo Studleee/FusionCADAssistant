@@ -16,7 +16,7 @@ def _distance_value_input(distance_cm=None, expression=None):
 
 
 def create_extrude(component, profile, distance_cm=None, operation=None, name=None,
-                   expression=None):
+                   expression=None, participant_bodies=None):
     """Extrude a profile by a distance.
 
     distance_cm: length in centimeters (used when expression is None).
@@ -39,6 +39,9 @@ def create_extrude(component, profile, distance_cm=None, operation=None, name=No
     # False = one-sided extrusion in the positive direction.
     ext_input.setDistanceExtent(False, value_input)
     ext_input.isSolid = True
+
+    if participant_bodies:
+        ext_input.participantBodies = list(participant_bodies)
 
     extrude = extrudes.add(ext_input)
     if not extrude:

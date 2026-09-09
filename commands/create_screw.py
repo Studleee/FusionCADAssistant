@@ -3,14 +3,16 @@
 Geometry strategy
 -----------------
 1. New component named Screw
-2. Choose head style: None / Hex / Flathead
+2. Choose head style: None / Hex / Flathead / Tri-Slot
 3. Stem diameter + stem length (thread blank)
 4. Head width + head length when a head is selected
    - Hex: polygon on shank end + join extrude (width = across flats)
    - Flathead: revolved frustum + stem (width = head OD)
+   - Tri-Slot: cheese-head cylinder with three radial kerfs (solid hub)
 5. Head shape: Squared (square shoulder), Cove (concave), or Countersunk (cone)
-6. Optional flat drive slot cut into the head top
-7. Native Fusion Thread on the stem cylinder (cosmetic or modeled)
+6. Optional flat drive slot (or three parallel slots when Reversing is on)
+7. Native Fusion Thread on the stem cylinder (cosmetic or modeled);
+   Reversing uses left-hand thread
 
 Size presets seed thread designation and suggested dimensions; all sizes
 remain user-editable.
@@ -114,13 +116,35 @@ def _apply_screw_ui(inputs):
 
     head_style = _selected_head_style(inputs)
     has_head = head_style != defaults.SCREW_HEAD_NONE
-    for input_id in ('headWidth', 'headLength', 'headShape', 'driveSlot'):
+    is_tri_slot = head_style == defaults.SCREW_HEAD_TRI_SLOT
+
+    for input_id in ('headWidth', 'headLength'):
         item = inputs.itemById(input_id)
         if item:
             item.isVisible = has_head
             item.isEnabled = has_head
 
-    slot_on = has_head and inputs.itemById('driveSlot').value
+    shape = inputs.itemById('headShape')
+    if shape:
+        shape.isVisible = has_head and not is_tri_slot
+        shape.isEnabled = has_head and not is_tri_slot
+
+    drive = inputs.itemById('driveSlot')
+    if drive:
+        # Tri-Slot head has built-in radial kerfs; hide the optional flat slot.
+        drive.isVisible = has_head and not is_tri_slot
+        drive.isEnabled = has_head and not is_tri_slot
+
+    reversing_input = inputs.itemById('reversing')
+    if reversing_input:
+        reversing_input.isVisible = True
+        reversing_input.isEnabled = True
+
+    reversing = inputs.itemById('reversing').value
+    drive_on = (
+        False if is_tri_slot
+        else (has_head and inputs.itemById('driveSlot').value))
+    slot_on = has_head and (drive_on or reversing or is_tri_slot)
     for input_id in ('slotWidth', 'slotDepth'):
         item = inputs.itemById(input_id)
         if item:
@@ -211,6 +235,7 @@ class CreateScrewCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
             for label in (
                     defaults.SCREW_HEAD_HEX,
                     defaults.SCREW_HEAD_FLAT,
+                    defaults.SCREW_HEAD_TRI_SLOT,
                     defaults.SCREW_HEAD_NONE):
                 head_input.listItems.add(label, label == default_head)
 
@@ -259,6 +284,13 @@ class CreateScrewCommandCreatedHandler(adsk.core.CommandCreatedEventHandler):
                 True,
                 '',
                 defaults.SCREW_DRIVE_SLOT)
+
+            inputs.addBoolValueInput(
+                'reversing',
+                'Reversing',
+                True,
+                '',
+                defaults.SCREW_REVERSING)
 
             inputs.addValueInput(
                 'slotWidth',
@@ -324,7 +356,9 @@ class CreateScrewCommandInputChangedHandler(adsk.core.InputChangedEventHandler):
     def notify(self, args):
         try:
             changed = args.input.id
-            if changed in ('fullThread', 'headStyle', 'screwSize', 'driveSlot'):
+            if changed in (
+                    'fullThread', 'headStyle', 'screwSize', 'driveSlot',
+                    'reversing'):
                 _apply_screw_ui(args.inputs)
             if changed == 'screwSize':
                 _seed_dims_from_preset(args.inputs)
@@ -339,7 +373,11 @@ class CreateScrewCommandInputChangedHandler(adsk.core.InputChangedEventHandler):
                     args.inputs.itemById('headLength').value = mm_to_cm(height_mm)
                     _seed_slot_dims(args.inputs, width_mm, height_mm)
             elif changed in ('headWidth', 'headLength'):
-                if args.inputs.itemById('driveSlot').value:
+                head_style = _selected_head_style(args.inputs)
+                drive_on = args.inputs.itemById('driveSlot').value
+                reversing = args.inputs.itemById('reversing').value
+                is_tri = head_style == defaults.SCREW_HEAD_TRI_SLOT
+                if drive_on or reversing or is_tri:
                     _seed_slot_dims(args.inputs)
         except Exception:
             pass
@@ -399,10 +437,17 @@ def _screw_inputs_are_valid(inputs):
         head_h = inputs.itemById('headLength').value
         if head_w <= 0 or head_h <= 0:
             return False
-        if head_style in (defaults.SCREW_HEAD_FLAT, defaults.SCREW_HEAD_HEX):
+        if head_style in (
+                defaults.SCREW_HEAD_FLAT,
+                defaults.SCREW_HEAD_HEX,
+                defaults.SCREW_HEAD_TRI_SLOT):
             if head_w <= stem_dia + 1e-6:
                 return False
-        if inputs.itemById('driveSlot').value:
+        needs_slots = (
+            head_style == defaults.SCREW_HEAD_TRI_SLOT
+            or inputs.itemById('driveSlot').value
+            or inputs.itemById('reversing').value)
+        if needs_slots:
             slot_w = inputs.itemById('slotWidth').value
             slot_d = inputs.itemById('slotDepth').value
             if slot_w <= 0 or slot_d <= 0 or slot_d >= head_h - 1e-6:
@@ -414,20 +459,27 @@ def _screw_inputs_are_valid(inputs):
 
 def _execute_screw_from_inputs(inputs):
     """Build from the current dialog values (shared by preview + execute)."""
+    reversing = inputs.itemById('reversing').value
+    head_style = _selected_head_style(inputs)
+    is_tri = head_style == defaults.SCREW_HEAD_TRI_SLOT
+    drive_slot = (
+        True if is_tri
+        else (inputs.itemById('driveSlot').value or reversing))
     execute_create_screw(
         designation=_selected_designation(inputs),
-        head_style=_selected_head_style(inputs),
+        head_style=head_style,
         head_shape=_selected_head_shape(inputs),
         stem_diameter_cm=inputs.itemById('stemDiameter').value,
         stem_length_cm=inputs.itemById('stemLength').value,
         head_width_cm=inputs.itemById('headWidth').value,
         head_length_cm=inputs.itemById('headLength').value,
-        drive_slot=inputs.itemById('driveSlot').value,
+        drive_slot=drive_slot,
         slot_width_cm=inputs.itemById('slotWidth').value,
         slot_depth_cm=inputs.itemById('slotDepth').value,
         full_thread=inputs.itemById('fullThread').value,
         thread_length_cm=inputs.itemById('threadLength').value,
-        modeled=inputs.itemById('modeled').value)
+        modeled=inputs.itemById('modeled').value,
+        reversing=reversing)
 
 
 def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_cm,
@@ -435,12 +487,14 @@ def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_
                          head_shape=None, drive_slot=False,
                          slot_width_cm=None, slot_depth_cm=None,
                          full_thread=True, thread_length_cm=None,
-                         modeled=False):
+                         modeled=False, reversing=False):
     """Build a metric screw blank with optional hex/flat head + Fusion thread.
 
     Stem diameter is always taken from the dialog. Fusion threads require the
     cylinder Ø to match an ISO designation — if the stem does not match, the
     blank is still created and the thread step is skipped.
+
+    reversing: left-hand thread and three parallel drive slots.
     """
     if head_shape is None:
         head_shape = defaults.SCREW_DEFAULT_HEAD_SHAPE
@@ -451,6 +505,12 @@ def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_
         raise ValueError('Stem length must be greater than zero.')
 
     has_head = head_style != defaults.SCREW_HEAD_NONE
+    is_tri_slot = head_style == defaults.SCREW_HEAD_TRI_SLOT
+    if reversing and has_head and not is_tri_slot:
+        drive_slot = True
+    if is_tri_slot:
+        drive_slot = True
+        head_shape = defaults.SCREW_SHAPE_SQUARED
     if has_head:
         if head_width_cm is None or head_length_cm is None:
             raise ValueError('Head width and head length are required.')
@@ -504,7 +564,7 @@ def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_
 
     _occ, component = create_component(design, defaults.SCREW_COMPONENT_NAME)
 
-    if head_style == defaults.SCREW_HEAD_FLAT:
+    if head_style in (defaults.SCREW_HEAD_FLAT, defaults.SCREW_HEAD_TRI_SLOT):
         body, cylinder_face = _build_flathead_screw(
             component, stem_diameter_cm, stem_length_cm,
             head_width_cm, head_length_cm, head_shape=head_shape)
@@ -524,10 +584,17 @@ def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_
             cylinder_face = find_cylindrical_face(body, stem_diameter_cm * 0.5)
             z_top_cm = float(stem_length_cm) + float(head_length_cm)
 
-    if has_head and drive_slot:
-        _add_drive_slot(
+    if is_tri_slot:
+        _add_radial_tri_slots(
             component, body, head_width_cm, slot_width_cm, slot_depth_cm,
             z_top_cm=z_top_cm)
+        cylinder_face = find_cylindrical_face(body, stem_diameter_cm * 0.5)
+    elif has_head and drive_slot:
+        slot_count = (
+            int(defaults.SCREW_REVERSING_SLOT_COUNT) if reversing else 1)
+        _add_drive_slot(
+            component, body, head_width_cm, slot_width_cm, slot_depth_cm,
+            z_top_cm=z_top_cm, slot_count=slot_count)
         # Slot cut can invalidate the prior face reference.
         cylinder_face = find_cylindrical_face(body, stem_diameter_cm * 0.5)
 
@@ -547,6 +614,7 @@ def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_
                 is_modeled=modeled,
                 is_full_length=full_thread,
                 thread_length_cm=None if full_thread else thread_length_cm,
+                is_right_handed=not reversing,
                 name=defaults.SCREW_THREAD_NAME)
         except Exception:
             # Stem Ø may be close but Fusion thread data still rejects it.
@@ -555,34 +623,138 @@ def execute_create_screw(designation, head_style, stem_diameter_cm, stem_length_
     return component, body, thread
 
 
-def _add_drive_slot(component, body, head_width_cm, slot_width_cm, slot_depth_cm,
-                    z_top_cm):
-    """Cut a through-style flat screwdriver slot across the head top face."""
-    plane = create_offset_plane(component, z_top_cm)
-    sketch = create_sketch_on_plane(
-        component, plane, name=defaults.SCREW_SLOT_SKETCH_NAME)
+def _add_radial_tri_slots(component, body, head_width_cm, slot_width_cm,
+                          slot_depth_cm, z_top_cm):
+    """Cut three radial slots at 120° that stop short of a solid center hub."""
+    ra = float(head_width_cm) * 0.5
+    r_inner = ra * float(defaults.SCREW_TRI_SLOT_HUB_FRACTION)
+    r_outer = ra * 1.08
+    half_w = float(slot_width_cm) * 0.5
+    # Keep the hub from being cut away by an oversized kerf.
+    max_half = max(r_inner * 0.75, float(slot_width_cm) * 0.25)
+    if half_w > max_half:
+        half_w = max_half
 
-    # Oversized length so the cut opens cleanly through both sides of the head.
+    count = int(defaults.SCREW_TRI_SLOT_COUNT)
+    for index in range(count):
+        angle = (2.0 * math.pi / float(count)) * float(index)
+        sketch_name = '{}{}'.format(defaults.SCREW_SLOT_SKETCH_NAME, index + 1)
+        cut_name = '{}{}'.format(defaults.SCREW_SLOT_CUT_NAME, index + 1)
+        plane = create_offset_plane(component, z_top_cm)
+        sketch = create_sketch_on_plane(component, plane, name=sketch_name)
+        _add_radial_slot_rectangle(sketch, r_inner, r_outer, half_w, angle)
+
+        if sketch.profiles.count < 1:
+            raise RuntimeError('Tri-slot sketch has no profile.')
+        profile = _largest_sketch_profile(sketch)
+        create_cut_extrude(
+            component,
+            profile,
+            distance_cm=slot_depth_cm,
+            name=cut_name,
+            expression=(
+                defaults.PARAM_SCREW_SLOT_DEPTH if index == 0 else None),
+            participant_bodies=[body],
+            into_solid=True)
+
+
+def _add_radial_slot_rectangle(sketch, r_inner, r_outer, half_w, angle_rad):
+    """Rectangle from r_inner→r_outer, width 2*half_w, rotated about origin."""
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    local = (
+        (r_inner, -half_w),
+        (r_outer, -half_w),
+        (r_outer, half_w),
+        (r_inner, half_w),
+    )
+    pts = []
+    for x, y in local:
+        pts.append(adsk.core.Point3D.create(
+            x * cos_a - y * sin_a,
+            x * sin_a + y * cos_a,
+            0.0))
+    lines = sketch.sketchCurves.sketchLines
+    for i in range(4):
+        line = lines.addByTwoPoints(pts[i], pts[(i + 1) % 4])
+        if not line:
+            raise RuntimeError('Failed to create tri-slot rectangle.')
+
+
+def _add_drive_slot(component, body, head_width_cm, slot_width_cm, slot_depth_cm,
+                    z_top_cm, slot_count=1):
+    """Cut flat screwdriver slot(s) across the head top face.
+
+    slot_count=1 → single diametral kerf.
+    slot_count=3 → three parallel kerfs (center + one each side), like rails.
+    """
+    slot_count = max(1, int(slot_count))
     half_len = float(head_width_cm) * 0.55
     half_w = float(slot_width_cm) * 0.5
-    p0 = adsk.core.Point3D.create(-half_len, -half_w, 0.0)
-    p1 = adsk.core.Point3D.create(half_len, half_w, 0.0)
-    rect = sketch.sketchCurves.sketchLines.addTwoPointRectangle(p0, p1)
-    if not rect:
-        raise RuntimeError('Failed to create drive-slot rectangle.')
+    y_offsets = _parallel_slot_offsets(slot_count, slot_width_cm, head_width_cm)
 
-    if sketch.profiles.count < 1:
-        raise RuntimeError('Drive-slot sketch has no profile.')
+    for index, y_off in enumerate(y_offsets):
+        sketch_name = defaults.SCREW_SLOT_SKETCH_NAME
+        cut_name = defaults.SCREW_SLOT_CUT_NAME
+        if slot_count > 1:
+            sketch_name = '{}{}'.format(sketch_name, index + 1)
+            cut_name = '{}{}'.format(cut_name, index + 1)
 
-    profile = sketch.profiles.item(0)
-    create_cut_extrude(
-        component,
-        profile,
-        distance_cm=slot_depth_cm,
-        name=defaults.SCREW_SLOT_CUT_NAME,
-        expression=defaults.PARAM_SCREW_SLOT_DEPTH,
-        participant_bodies=[body],
-        into_solid=True)
+        plane = create_offset_plane(component, z_top_cm)
+        sketch = create_sketch_on_plane(component, plane, name=sketch_name)
+        p0 = adsk.core.Point3D.create(-half_len, y_off - half_w, 0.0)
+        p1 = adsk.core.Point3D.create(half_len, y_off + half_w, 0.0)
+        rect = sketch.sketchCurves.sketchLines.addTwoPointRectangle(p0, p1)
+        if not rect:
+            raise RuntimeError('Failed to create drive-slot rectangle.')
+
+        if sketch.profiles.count < 1:
+            raise RuntimeError('Drive-slot sketch has no profile.')
+
+        profile = _largest_sketch_profile(sketch)
+        create_cut_extrude(
+            component,
+            profile,
+            distance_cm=slot_depth_cm,
+            name=cut_name,
+            expression=(
+                defaults.PARAM_SCREW_SLOT_DEPTH if index == 0 else None),
+            participant_bodies=[body],
+            into_solid=True)
+
+
+def _parallel_slot_offsets(slot_count, slot_width_cm, head_width_cm):
+    """Y offsets for parallel slots centered on the head (middle at 0)."""
+    if slot_count <= 1:
+        return (0.0,)
+    # Center-to-center ≈ 2× kerf so a clear land sits between each rail.
+    spacing = float(slot_width_cm) * 2.0
+    max_spacing = float(head_width_cm) * 0.28
+    if spacing > max_spacing:
+        spacing = max(max_spacing, float(slot_width_cm) * 1.35)
+    if slot_count == 3:
+        return (-spacing, 0.0, spacing)
+    # Generic odd count: symmetric about center.
+    half = slot_count // 2
+    return tuple((i - half) * spacing for i in range(slot_count))
+
+
+def _largest_sketch_profile(sketch):
+    """Pick the largest closed profile in a sketch."""
+    best = None
+    best_area = -1.0
+    for i in range(sketch.profiles.count):
+        candidate = sketch.profiles.item(i)
+        try:
+            area = abs(candidate.areaProperties().area)
+        except Exception:
+            continue
+        if area > best_area:
+            best_area = area
+            best = candidate
+    if best is None:
+        raise RuntimeError('Drive-slot sketch has no usable profile.')
+    return best
 
 
 def _build_shank_screw(component, stem_diameter_cm, stem_length_cm):

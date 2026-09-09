@@ -3,6 +3,7 @@
 from commands import (
     apply_anglage,
     apply_finish_guides,
+    create_dial,
     create_hairspring,
     create_jewel,
     create_mainspring,
@@ -10,6 +11,7 @@ from commands import (
     create_pivot,
     create_ring_gear,
     create_screw,
+    create_watch_case,
     create_wheel,
 )
 from config import defaults
@@ -23,6 +25,8 @@ _COMMAND_MODULES = (
     create_wheel,
     create_ring_gear,
     create_pinion,
+    create_watch_case,
+    create_dial,
     apply_finish_guides,
     apply_anglage,
 )
@@ -35,6 +39,8 @@ _COMMAND_IDS = (
     defaults.CMD_CREATE_WHEEL_ID,
     defaults.CMD_CREATE_RING_GEAR_ID,
     defaults.CMD_CREATE_PINION_ID,
+    defaults.CMD_CREATE_WATCH_CASE_ID,
+    defaults.CMD_CREATE_DIAL_ID,
     defaults.CMD_FINISH_GUIDES_ID,
     defaults.CMD_ANGLAGE_ID,
 )
